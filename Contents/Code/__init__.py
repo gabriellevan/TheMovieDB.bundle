@@ -137,16 +137,10 @@ class TMDbAgent(Agent.Movies):
         if Prefs['adult']:
           include_adult = 'true'
 
-        # Historically we've StrippedDiacritics() here, but this is a pretty aggressive function that won't pass
-        # anything that can't be encoded to ASCII, and as such has a tendency to nuke whole titles in, e.g., Asian
-        # languages (See GHI #26).  If we have a string that was modified by StripDiacritics() and we get no results,
-        # try the search again with the original.
-        #
-        stripped_name = String.StripDiacritics(media.name)
-        tmdb_dict = GetJSON(url=TMDB_MOVIE_SEARCH % (String.Quote(stripped_name), year, lang, include_adult))
-        if media.name != stripped_name and (tmdb_dict == None or len(tmdb_dict['results']) == 0):
-          Log('No results for title modified by strip diacritics, searching again with the original: ' + media.name)
-          tmdb_dict = GetJSON(url=TMDB_MOVIE_SEARCH % (String.Quote(media.name), year, lang, include_adult))
+        if (year == ''):
+          tmdb_dict = self.searchByName(media, year, lang, include_adult)
+        else:
+          tmdb_dict = self.searchByNameWithYearVariation(media, year, lang, include_adult)
 
         if isinstance(tmdb_dict, dict) and 'results' in tmdb_dict:
           for i, movie in enumerate(sorted(tmdb_dict['results'], key=lambda k: k['popularity'], reverse=True)):
@@ -179,6 +173,27 @@ class TMDbAgent(Agent.Movies):
                 score = score,
                 lang = lang
               ))
+
+  def searchByName(self, media, year, lang, include_adult):
+    # Historically we've StrippedDiacritics() here, but this is a pretty aggressive function that won't pass
+    # anything that can't be encoded to ASCII, and as such has a tendency to nuke whole titles in, e.g., Asian
+    # languages (See GHI #26).  If we have a string that was modified by StripDiacritics() and we get no results,
+    # try the search again with the original.
+    #
+    stripped_name = String.StripDiacritics(media.name)
+    tmdb_dict = GetJSON(url=TMDB_MOVIE_SEARCH % (String.Quote(stripped_name), year, lang, include_adult))
+    if media.name != stripped_name and (tmdb_dict == None or len(tmdb_dict['results']) == 0):
+      Log('No results for title modified by strip diacritics, searching again with the original: ' + media.name)
+      tmdb_dict = GetJSON(url=TMDB_MOVIE_SEARCH % (String.Quote(media.name), year, lang, include_adult))
+    return tmdb_dict
+
+  def searchByNameWithYearVariation(self, media, year, lang, include_adult):
+    tmdb_dict = self.searchByName(media, year, lang, include_adult)
+    if (tmdb_dict == None or len(tmdb_dict['results']) == 0):
+      tmdb_dict = self.searchByName(media, str(int(year)+1), lang, include_adult)
+    if (tmdb_dict == None or len(tmdb_dict['results']) == 0):
+      tmdb_dict = self.searchByName(media, str(int(year)-1), lang, include_adult)
+    return tmdb_dict
 
   def update(self, metadata, media, lang):
 
